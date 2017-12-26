@@ -15,17 +15,22 @@ class client_ftp():
         self.lock = threading.Lock()
 
     def put(self,comm):
+        '''
+        send file info ,then send file date
+        :param comm:
+        :return:
+        '''
         import json
-        os.chdir('./Dlowload')
+        os.chdir('./Download')  # client dir
         filename = comm.split()[1]
         size = os.stat(filename).st_size
         data = json.dumps([filename,size,0])
-        send_size = 0
+        # send_size = 0
         self.sock.send(data.encode()) # send [name,size,state]
 
         with self.lock: # a file can be use at the a time
             with open(filename,'rb') as f:
-                f.seek(send_size)
+                # f.seek(send_size)
                 for line in f:
                     self.sock.send(line)
             print("sending done!")
@@ -34,45 +39,56 @@ class client_ftp():
 
     def get(self,comm):
         import json
-        os.chdir('./Dlowload')
+        os.chdir('./Download')  # client dir
         data = self.sock.recv(1024).decode()
+
         file_info = json.loads(data)  # [name,size,state]
-        to_size = file_info[1]
+        print("file info:",file_info)
+        total_size = file_info[1] # total size
         recv_size = 0
-        filename = uuid.uuid1()
-        with self.lock:
-            with open('./%s'%filename,'ab'):
-                while recv_size < to_size:
-                    size = to_size - recv_size
-                    if size < 1024:
-                        self.sock.recv(size)
-                    else:
-                        self.sock.recv(1024)
+        filename = str(uuid.uuid1()).replace('-','')
+        with open('./%s'%filename,'wb'):
+            while recv_size < total_size:
+                size = total_size - recv_size
+                if size > 1024:
+                    data = self.sock.recv(1024)
                 else:
-                    print("get file done!")
+                    data = self.sock.recv(size)
+                recv_size += len(data)
+            else:
+                print("get file done!")
 
     def run(self):
         while True:
             inp = input("command>>:").strip()
             if inp:
                 command = inp.split()
-                if command[0] == 'put':
-                    if os.path.exists('./Upload/%s'%command[1]):
+                if command[0] == 'put': # put file to server
+                    if os.path.exists('./Download/%s'%command[1]):
                         self.sock.send(inp.encode())
-                        put = threading.Thread(target=self.put,args=(command,))
+                        put = threading.Thread(target=self.put, args=(command,))
                         put.start()
                         put.join()
+
                     else:
                         print("file does not exist!")
+
                 elif command[0] == 'get':
-                    if os.path.exists('./Download/%s'%command[1]):
+                    if os.path.exists('./Upload/%s'%command[1]):
                         self.sock.send(inp.encode())
                         get = threading.Thread(target=self.get, args=(command,))
                         get.start()
                         get.join()
-                    print("file does not exist!")
+
+                    else:# file does not exist in server
+                        print("file does not exist in server")
+
 
                 else:
                     print("invalid command!")
             else:
                 pass
+
+if __name__ == '__main__':
+    client = client_ftp()
+    client.run()
