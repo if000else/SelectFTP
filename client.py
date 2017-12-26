@@ -21,18 +21,21 @@ class client_ftp():
         :return:
         '''
         import pickle
-        os.chdir('./Download')  # client dir
+        # os.chdir('./Download')  # client dir
         filename = comm.split()[1]
-        size = os.stat(filename).st_size
+        size = os.stat("./Download/%s"%filename).st_size
         data = pickle.dumps([filename,size,0])
         # send_size = 0
         self.sock.send(data) # send [name,size,state]
 
+        sent_size = 0
         with self.lock: # a file can be use at the a time
-            with open(filename,'rb') as f:
-                # f.seek(send_size)
-                for line in f:
-                    self.sock.send(line)
+            with open("./Download/%s"%filename,'rb') as f:
+                while sent_size < size:
+                    for line in f:
+                        self.sock.send(line)
+                        sent_size += len(line)
+                    # print("Transfer bar [%s]%%"%(sent_size/size)*100,end='\r')
             print("sending done!")
 
 
@@ -40,7 +43,7 @@ class client_ftp():
     def get(self,comm):
         import pickle
         self.sock.send(comm.encode())
-        os.chdir('./Download')  # client dir
+        # os.chdir('./Download')  # client dir
         data = self.sock.recv(1024)
         # print("file info:", data,type(data))
         # data = data.decode()
@@ -50,7 +53,7 @@ class client_ftp():
         total_size = file_info[1] # total size
         recv_size = 0
         filename = str(uuid.uuid1()).replace('-','')
-        with open('./%s'%filename,'wb'):
+        with open('./Download/%s'%filename,'wb'):
             while recv_size < total_size:
                 size = total_size - recv_size
                 if size > 1024:
@@ -58,18 +61,25 @@ class client_ftp():
                 else:
                     data = self.sock.recv(size)
                 recv_size += len(data)
+                # print("Transfer bar:[%s]%%"%(recv_size/total_size)*100,end='\r')
             else:
                 print("get file done!")
 
     def run(self):
         while True:
+            print("\033[1;34;1mfiles local:\033[0m")
+            for i,f in enumerate(os.listdir("./Download"),1):
+                print(i,f)
+            print("\033[1;34;1mfiles server:\033[0m")
+            for i, f in enumerate(os.listdir("./Upload"), 1):
+                print(i, f)
             inp = input("command>>:").strip()
             if inp:
                 command = inp.split()
                 if command[0] == 'put': # put file to server
                     if os.path.exists('./Download/%s'%command[1]):
                         self.sock.send(inp.encode())
-                        put = threading.Thread(target=self.put, args=(command,))
+                        put = threading.Thread(target=self.put, args=(inp,))
                         put.start()
                         put.join()
 

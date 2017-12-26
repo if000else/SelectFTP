@@ -49,37 +49,35 @@ class server_ftp():
 
             # finish receiving
             if size == self.put_queue[conn][2]:
-                print("recv has finished!")
-                self.put_queue.pop(conn) # clear put_queue
                 # rename filename
                 if os.path.exists("./Upload/%s"%self.put_queue[conn][0]):
                     os.remove("./Upload/%s"%self.put_queue[conn][0])
                 os.rename("./Upload/%s"%self.put_queue[conn][3],"./Upload/%s"%self.put_queue[conn][0])
+                print("recv has finished!")
+                self.put_queue.pop(conn)  # clear put_queue
+                if conn in self.outputs:
+                    self.outputs.remove(conn)
     def get(self,conn):
         '''
         download
         :param conn:
         :return:
         '''
-        if self.message[conn].empty(): # should send data
-            filename,size, state = self.get_queue[conn][0],self.get_queue[conn][1],self.get_queue[conn][2]
-            with open("./Upload/%s"%filename,'rb') as f:
-                f.seek(state)
-                data = f.readline()
-                conn.send(data)
-                self.get_queue[conn][2] += len(data)
-            if self.get_queue[conn][1] == self.get_queue[conn][2]:
-                print("file sending done!")
-                self.get_queue.pop(conn) # remove conn from get_queue
-                self.outputs.remove(conn)
-        else: # should send file info
+        if self.get_queue[conn][2] == 500 : # code 500 -->not ready,send file info
             data = self.message[conn].get()
-            # print("queue data:",data)
             send_data = pickle.dumps(data)
-            # print("dump type",type(send_data))
-            # print("wrapped send_data:",pickle.loads(send_data))
-            conn.send(send_data) # [name,size,state]
-            # print("send it...")
+            conn.send(send_data)  # [name,size,state]
+            self.get_queue[conn][2] = 200  # code 200 -->change state
+
+        else: # should send file
+            try:
+                data = self.message[conn].get_nowait()
+            except queue.Empty:
+                print("send file done!")
+                self.get_queue.pop(conn)  # remove conn from get_queue
+                self.outputs.remove(conn)
+            else:
+                conn.send(data)
 
     def filter(self,conn):
         '''
@@ -102,9 +100,13 @@ class server_ftp():
                 self.get_queue[conn] = [command[1]]
                 size = os.stat("./Upload/%s"%command[1]).st_size
                 self.get_queue[conn].append(size)
-                self.get_queue[conn].append(0) # {conn:[name,size,state]}
+                self.get_queue[conn].append(500) # {conn:[name,size,state]}
                 self.message[conn].put(self.get_queue[conn]) # insert to queue
                 self.outputs.append(conn) # add to writable listen list
+                # load file data
+                with open("./Upload/%s" % command[1], 'rb') as f:
+                    for line in f:
+                        self.message[conn].put(line)
             # else:
             #     self.message[conn].put('Invalid command!!!')
     def write(self,conn):
