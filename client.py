@@ -20,13 +20,13 @@ class client_ftp():
         :param comm:
         :return:
         '''
-        import json
+        import pickle
         os.chdir('./Download')  # client dir
         filename = comm.split()[1]
         size = os.stat(filename).st_size
-        data = json.dumps([filename,size,0])
+        data = pickle.dumps([filename,size,0])
         # send_size = 0
-        self.sock.send(data.encode()) # send [name,size,state]
+        self.sock.send(data) # send [name,size,state]
 
         with self.lock: # a file can be use at the a time
             with open(filename,'rb') as f:
@@ -38,12 +38,15 @@ class client_ftp():
 
 
     def get(self,comm):
-        import json
+        import pickle
+        self.sock.send(comm.encode())
         os.chdir('./Download')  # client dir
-        data = self.sock.recv(1024).decode()
+        data = self.sock.recv(1024)
+        # print("file info:", data,type(data))
+        # data = data.decode()
 
-        file_info = json.loads(data)  # [name,size,state]
-        print("file info:",file_info)
+        file_info = pickle.loads(data)  # [name,size,state]
+
         total_size = file_info[1] # total size
         recv_size = 0
         filename = str(uuid.uuid1()).replace('-','')
@@ -75,10 +78,10 @@ class client_ftp():
 
                 elif command[0] == 'get':
                     if os.path.exists('./Upload/%s'%command[1]):
-                        self.sock.send(inp.encode())
-                        get = threading.Thread(target=self.get, args=(command,))
-                        get.start()
-                        get.join()
+                        self.get(inp)
+                        # get = threading.Thread(target=self.get, args=(command,))
+                        # get.start()
+                        # get.join()
 
                     else:# file does not exist in server
                         print("file does not exist in server")

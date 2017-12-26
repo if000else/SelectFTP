@@ -1,4 +1,4 @@
-import os,time,uuid,socket,select,queue,json
+import os,time,uuid,socket,select,queue,pickle
 
 
 ip,port = 'localhost',1212
@@ -18,7 +18,7 @@ class server_ftp():
         #init socket
         self.sock.bind((ip,port))
         self.sock.listen(1000)
-        self.sock.setblocking(0)
+        # self.sock.setblocking(0)
 
     def put(self,conn):
         '''
@@ -28,7 +28,7 @@ class server_ftp():
         '''
         import uuid
         if len(self.put_queue[conn]) == 1: # not ready,wait for file info
-            data = json.loads(conn.recv(1024).decode()) # recv [name,size,state]
+            data = pickle.loads(conn.recv(1024)) # recv [name,size,state]
             self.put_queue[conn] = data
             filename = str(uuid.uuid1()).replace('-','')
             self.put_queue[conn].append(filename)  # unique filename [3]
@@ -40,9 +40,9 @@ class server_ftp():
             if size > state :  # continue recv
                 remain = size - state
                 if remain > 1024:
-                    data = self.sock.recv(1024)
+                    data = conn.recv(1024)
                 else:
-                    data = self.sock.recv(remain)
+                    data = conn.recv(remain)
                 with open("./Upload/%s"%self.put_queue[conn][3],'ab') as f:
                     f.write(data)
                     self.put_queue[conn][2] += len(data)
@@ -66,7 +66,7 @@ class server_ftp():
             with open("./Upload/%s"%filename,'rb') as f:
                 f.seek(state)
                 data = f.readline()
-                self.sock.send(data)
+                conn.send(data)
                 self.get_queue[conn][2] += len(data)
             if self.get_queue[conn][1] == self.get_queue[conn][2]:
                 print("file sending done!")
@@ -74,7 +74,12 @@ class server_ftp():
                 self.outputs.remove(conn)
         else: # should send file info
             data = self.message[conn].get()
-            self.sock.send(json.dumps(data).encode()) # [name,size,state]
+            # print("queue data:",data)
+            send_data = pickle.dumps(data)
+            # print("dump type",type(send_data))
+            # print("wrapped send_data:",pickle.loads(send_data))
+            conn.send(send_data) # [name,size,state]
+            # print("send it...")
 
     def filter(self,conn):
         '''
@@ -118,27 +123,31 @@ class server_ftp():
         if conn in self.get_queue[conn]:
             del self.get_queue[conn]
         self.inputs.remove(conn)
-        del self.message[conn]
+        # del self.message[conn]
         # conn.closed()
     def run(self):
         '''
         listen specified list and deal with socket
         :return:
         '''
-        readable,writable,exception = select.select(self.inputs,self.outputs,self.inputs)
-        for r in readable:
-            if r is self.sock: # new client
-                conn, addr = r.accept()
-                conn.setblocking(False)
-                print("A client has connected in:", conn)
-                self.inputs.append(conn)
-                self.message[conn] = queue.Queue()  #
-            else: # old client
-                self.filter(r)
-        for w in writable:
-            self.get(w)
-        for e in exception:
-            self.clear(e)
+        try:
+            while True:
+                readable,writable,exception = select.select(self.inputs,self.outputs,self.inputs)
+                for r in readable:
+                    if r is self.sock: # new client
+                        conn, addr = r.accept()
+                        # conn.setblocking(False)
+                        print("A client has connected in:", conn)
+                        self.inputs.append(conn)
+                        self.message[conn] = queue.Queue()  #
+                    else: # old client
+                        self.filter(r)
+                for w in writable:
+                    self.get(w)
+                for e in exception:
+                    self.clear(e)
+        except ConnectionResetError:
+            print("a client has crash unexpectedly")
 if __name__ == '__main__':
     server = server_ftp()
     server.run()
