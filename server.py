@@ -1,7 +1,6 @@
 import os,time,uuid,socket,select,queue,pickle
 
-
-ip,port = 'localhost',1212
+ip,port = 'localhost',8888
 # a = queue.Queue()
 # a.empty()
 class server_ftp():
@@ -85,33 +84,36 @@ class server_ftp():
         :param conn:
         :return:
         '''
-        if conn in self.put_queue: # Uploading...
-            self.put(conn)
-        elif conn in self.get_queue: # Downloading...
-            self.get(conn)
-        else: # command or file info
-            data = conn.recv(1024).decode()
-            print("Recv client request:", data)
-            command = data.split()
-            if command[0] == 'put': # get filename
-                self.put_queue[conn] = [command[1]]  # {conn:[filename,]}
+        data = conn.recv(1024)
+        if data:
+            if conn in self.put_queue: # Uploading...
+                self.put(conn)
+            elif conn in self.get_queue: # Downloading...
+                self.get(conn)
+            else: # command or file info
+                # data = conn.recv(1024).decode()
+                # print("Recv client request:", data)
+                # if data:
+                command = data.split()
+                if command[0] == 'put': # get filename
+                    self.put_queue[conn] = [command[1]]  # {conn:[filename,]}
 
-            elif command[0] == 'get': # put filename
-                self.get_queue[conn] = [command[1]]
-                size = os.stat("./Upload/%s"%command[1]).st_size
-                self.get_queue[conn].append(size)
-                self.get_queue[conn].append(500) # {conn:[name,size,state]}
-                self.message[conn].put(self.get_queue[conn]) # insert to queue
-                self.outputs.append(conn) # add to writable listen list
-                # load file data
-                with open("./Upload/%s" % command[1], 'rb') as f:
-                    for line in f:
-                        self.message[conn].put(line)
-            # else:
-            #     self.message[conn].put('Invalid command!!!')
+                elif command[0] == 'get': # put filename
+                    self.get_queue[conn] = [command[1]]
+                    size = os.stat("./Upload/%s"%command[1]).st_size
+                    self.get_queue[conn].append(size)
+                    self.get_queue[conn].append(500) # {conn:[name,size,state]}
+                    self.message[conn].put(self.get_queue[conn]) # insert to queue
+                    self.outputs.append(conn) # add to writable listen list
+                    # load file data
+                    with open("./Upload/%s" % command[1], 'rb') as f:
+                        for line in f:
+                            self.message[conn].put(line)
+        else:
+            print("A cliend has disconnected!", conn)
+            self.clear(conn)
     def write(self,conn):
         pass
-
     def clear(self,conn):
         '''
         clear conn
@@ -125,31 +127,40 @@ class server_ftp():
         if conn in self.get_queue[conn]:
             del self.get_queue[conn]
         self.inputs.remove(conn)
-        # del self.message[conn]
-        # conn.closed()
+        self.inputs.remove(conn)
+        del self.message[conn]
+        conn.closed()
     def run(self):
         '''
         listen specified list and deal with socket
         :return:
         '''
-        try:
-            while True:
-                readable,writable,exception = select.select(self.inputs,self.outputs,self.inputs)
-                for r in readable:
-                    if r is self.sock: # new client
-                        conn, addr = r.accept()
-                        # conn.setblocking(False)
-                        print("A client has connected in:", conn)
-                        self.inputs.append(conn)
-                        self.message[conn] = queue.Queue()  #
-                    else: # old client
-                        self.filter(r)
-                for w in writable:
-                    self.get(w)
-                for e in exception:
-                    self.clear(e)
-        except ConnectionResetError:
-            print("a client has crash unexpectedly")
+        while True:
+            readable,writable,exception = select.select(self.inputs,self.outputs,self.inputs)
+            for r in readable:
+                if r is self.sock: # new client
+                    conn, addr = r.accept()
+                    # conn.setblocking(False)
+                    print("A client has connected in:", conn)
+                    self.inputs.append(conn)
+                    self.message[conn] = queue.Queue()  #
+                else: # old client
+                    data = r.recv(1024)
+                    if data:
+                        pass
+                    else:
+                        print("client has disconnected")
+                    # self.filter(r)
+            for w in writable:
+                self.get(w)
+            for e in exception:
+                self.clear(e)
+
+                # except ConnectionResetError as e:
+                #     print("a client has crash unexpectedly")
+                #     print(e)
+                # break
+
 if __name__ == '__main__':
     server = server_ftp()
     server.run()

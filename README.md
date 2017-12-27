@@ -17,3 +17,7 @@ Github: https://github.com/if000else
 
 
 运行：先运行server.py,启动服务，然后运行client.py
+
+usage:put filename
+
+usage:get filename

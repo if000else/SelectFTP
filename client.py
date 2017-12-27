@@ -1,7 +1,7 @@
 import os, time, uuid, socket, select
 import threading
 
-ip, port = 'localhost', 1212
+ip, port = 'localhost', 8888
 
 
 class client_ftp():
@@ -74,6 +74,7 @@ class client_ftp():
             for i, f in enumerate(os.listdir("./Upload"), 1):
                 print(i, f)
             inp = input("command>>:").strip()
+        # inp = 'get a'
             if inp:
                 command = inp.split()
                 if command[0] == 'put': # put file to server
@@ -82,9 +83,8 @@ class client_ftp():
                         put = threading.Thread(target=self.put, args=(inp,))
                         put.start()
                         put.join()
-
                     else:
-                        print("file does not exist!")
+                        print("local file does not exist!")
 
                 elif command[0] == 'get':
                     if os.path.exists('./Upload/%s'%command[1]):
@@ -92,16 +92,13 @@ class client_ftp():
                         # get = threading.Thread(target=self.get, args=(command,))
                         # get.start()
                         # get.join()
-
                     else:# file does not exist in server
                         print("file does not exist in server")
-
-
                 else:
                     print("invalid command!")
             else:
                 pass
 
 if __name__ == '__main__':
-    client = client_ftp()
-    client.run()
+        client = client_ftp()
+        client.run()
